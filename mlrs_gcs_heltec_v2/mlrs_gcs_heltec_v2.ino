@@ -109,6 +109,7 @@ const char* reset_reason_str(esp_reset_reason_t r) {
 #define MAVLINK_MSG_ID_SYS_STATUS           1
 #define MAVLINK_MSG_ID_GPS_RAW_INT          24
 #define MAVLINK_MSG_ID_GLOBAL_POSITION_INT  33
+#define MAVLINK_MSG_ID_VFR_HUD              74
 #define MAVLINK_MSG_ID_RADIO_STATUS         109
 
 struct MavPacket {
@@ -242,6 +243,7 @@ float     telem_lat         = 0.0f;
 float     telem_lon         = 0.0f;
 float     telem_alt_m       = 0.0f;
 float     telem_spd_ms      = 0.0f;
+float     telem_airspeed_ms = 0.0f;
 float     telem_hdg_deg     = 0.0f;
 int       telem_satellites  = 0;
 uint8_t   telem_fix         = 0;
@@ -249,6 +251,7 @@ float     telem_bat_v       = 0.0f;
 int       telem_bat_pct     = -1;
 int       telem_rssi_pct    = -1;
 uint32_t  telem_flight_mode = 0;
+uint8_t   telem_vehicle_type = 0;
 bool      telem_armed       = false;
 bool      telem_gps_ok      = false;
 bool      telem_ever_data   = false;
@@ -335,6 +338,15 @@ void process_mavlink_packet(MavPacket& pkt) {
                 telem_rssi_pct = (raw == 255) ? -1 : (int)constrain(raw, 0, 100);
             }
             break;
+        case MAVLINK_MSG_ID_VFR_HUD:
+            // VFR_HUD layout: float airspeed @0, float groundspeed @4,
+            // int16 heading @8, uint16 throttle @10, float alt @12, float climb @16.
+            if (pkt.payload_len >= 4) {
+                float as;
+                memcpy(&as, &p[0], sizeof(float));
+                telem_airspeed_ms = as;
+            }
+            break;
         case MAVLINK_MSG_ID_HEARTBEAT:
             if (pkt.payload_len >= 7) {
                 uint8_t mav_type   = p[4];
@@ -346,6 +358,7 @@ void process_mavlink_packet(MavPacket& pkt) {
                 }
                 if (mav_type == 1 || mav_type == 2 || mav_type == 3 ||
                     mav_type == 13 || mav_type == 19) {
+                    telem_vehicle_type = mav_type;
                     telem_flight_mode = mav_get_u32(p, 0);
                     telem_armed = (base_mode & 0x80) != 0;
                 }
@@ -405,8 +418,19 @@ void oled_telem() {
         display.printf("\n");
     }
 
-    display.printf("Alt:%4.0fm GS:%3.0f\n", telem_alt_m, telem_spd_ms);
-    display.printf("Hdg:%3d deg\n", (int)telem_hdg_deg);
+    display.printf("Alt:%4.0fm Hdg:%3d\n", telem_alt_m, (int)telem_hdg_deg);
+
+    // ArduPlane (fixed-wing or VTOL) has a meaningful airspeed even without
+    // a pitot, via the EKF wind estimator. iNav without a pitot just mirrors
+    // ground speed, and copters have no meaningful airspeed - show GS only
+    // in those cases.
+    bool show_as = (fw_type == FW_ARDU) &&
+                   (telem_vehicle_type == 1 || telem_vehicle_type == 19);
+    if (show_as) {
+        display.printf("AS:%3.0f GS:%3.0f\n", telem_airspeed_ms, telem_spd_ms);
+    } else {
+        display.printf("GS:%3.0f\n", telem_spd_ms);
+    }
 
     if (telem_bat_pct >= 0)
         display.printf("Bat:%4.1fV %3d%%\n", telem_bat_v, telem_bat_pct);

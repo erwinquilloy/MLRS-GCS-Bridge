@@ -56,6 +56,7 @@ WiFiUDP udp;
 #define MAVLINK_MSG_ID_SYS_STATUS           1
 #define MAVLINK_MSG_ID_GPS_RAW_INT          24
 #define MAVLINK_MSG_ID_GLOBAL_POSITION_INT  33
+#define MAVLINK_MSG_ID_VFR_HUD              74
 #define MAVLINK_MSG_ID_RADIO_STATUS         109
 
 struct MavPacket {
@@ -151,6 +152,7 @@ float     telem_lat         = 0.0f;
 float     telem_lon         = 0.0f;
 float     telem_alt_m       = 0.0f;
 float     telem_spd_ms      = 0.0f;
+float     telem_airspeed_ms = 0.0f;
 float     telem_hdg_deg     = 0.0f;
 int       telem_satellites  = 0;
 uint8_t   telem_fix         = 0;
@@ -158,6 +160,7 @@ float     telem_bat_v       = 0.0f;
 int       telem_bat_pct     = -1;
 int       telem_rssi_pct    = -1;
 uint32_t  telem_flight_mode = 0;
+uint8_t   telem_vehicle_type = 0;
 bool      telem_armed       = false;
 bool      telem_gps_ok      = false;
 bool      telem_ever_data   = false;
@@ -249,6 +252,16 @@ void process_mavlink_packet(MavPacket& pkt) {
             }
             break;
 
+        case MAVLINK_MSG_ID_VFR_HUD:
+            // VFR_HUD: float airspeed @0, float groundspeed @4, int16 heading @8,
+            // uint16 throttle @10, float alt @12, float climb @16.
+            if (pkt.payload_len >= 4) {
+                float as;
+                memcpy(&as, &p[0], sizeof(float));
+                telem_airspeed_ms = as;
+            }
+            break;
+
         case MAVLINK_MSG_ID_HEARTBEAT:
             if (pkt.payload_len >= 7) {
                 uint8_t mav_type   = p[4];
@@ -265,6 +278,7 @@ void process_mavlink_packet(MavPacket& pkt) {
                 }
                 if (mav_type == 1 || mav_type == 2 || mav_type == 3 ||
                     mav_type == 13 || mav_type == 19) {
+                    telem_vehicle_type = mav_type;
                     telem_flight_mode = mav_get_u32(p, 0);
                     telem_armed = (base_mode & 0x80) != 0;
                 }
@@ -303,8 +317,15 @@ void serial_telem() {
         Serial.printf("fix=%dD ", telem_fix);
     }
 
-    Serial.printf("alt=%.0fm gs=%.0f hdg=%d ",
-        telem_alt_m, telem_spd_ms, (int)telem_hdg_deg);
+    bool show_as = (fw_type == FW_ARDU) &&
+                   (telem_vehicle_type == 1 || telem_vehicle_type == 19);
+    if (show_as) {
+        Serial.printf("alt=%.0fm as=%.0f gs=%.0f hdg=%d ",
+            telem_alt_m, telem_airspeed_ms, telem_spd_ms, (int)telem_hdg_deg);
+    } else {
+        Serial.printf("alt=%.0fm gs=%.0f hdg=%d ",
+            telem_alt_m, telem_spd_ms, (int)telem_hdg_deg);
+    }
 
     if (telem_bat_pct >= 0)
         Serial.printf("bat=%.1fV %d%% ", telem_bat_v, telem_bat_pct);

@@ -37,7 +37,8 @@ The choice is persisted to NVS via `Preferences`, so it survives reboots.
 - Bidirectional MAVLink bridge (downlink + uplink).
 - Built-in MAVLink v1/v2 parser (no MAVLink library dependency).
 - Decoded telemetry on OLED: flight mode, arm state, GPS fix/sats, lat/lon,
-  altitude, ground speed, heading, battery V/%, and RSSI %.
+  altitude, heading, ground speed (plus airspeed on ArduPlane/VTOL),
+  battery V/%, and RSSI %.
 - ArduPilot / iNav firmware autodetection from the HEARTBEAT autopilot field
   (mode names are mapped accordingly).
 - Link status indicator (`LINK OK` / `NO DATA` / `waiting`) based on packet
@@ -52,8 +53,10 @@ refreshed every 200 ms:
 MANUAL  ARM S:12 ARDU      <- flight mode | arm state | sats | autopilot
 Lat: 14.123456             <- latitude  (or "Fix:Nd No GPS" if no fix)
 Lon:121.654321             <- longitude (or blank             if no fix)
-Alt:  42m GS: 18           <- altitude (m) and ground speed (m/s)
-Hdg: 87 deg                <- heading (deg)
+Alt:  42m Hdg: 87          <- altitude (m) and heading (deg)
+AS: 14 GS: 18              <- airspeed + ground speed (ArduPlane/VTOL)
+                              -- OR --
+GS: 18                     <- ground speed only (iNav, copter, unknown)
 Bat:11.8V  87%             <- battery voltage and remaining %
 RSSI: 73% LINK OK          <- mLRS RSSI (0-100%) and link state
 ```
@@ -66,8 +69,9 @@ RSSI: 73% LINK OK          <- mLRS RSSI (0-100%) and link state
 | Autopilot    | `HEARTBEAT.autopilot`       | `ARDU` (ArduPilot=3) / `iNAV` (iNav=12) / `?` until first HEARTBEAT |
 | Lat / Lon    | `GLOBAL_POSITION_INT.lat/lon` | Degrees, 6 dp; falls back to "Fix:Nd No GPS" using `GPS_RAW_INT.fix_type` when no GPS lock |
 | Alt          | `GLOBAL_POSITION_INT.alt`   | Metres above sea level (mm in MAVLink, converted) |
-| GS           | `GLOBAL_POSITION_INT.vx/vy` | Ground speed from horizontal velocity vector |
 | Hdg          | `GLOBAL_POSITION_INT.hdg`   | Compass heading in degrees |
+| AS           | `VFR_HUD.airspeed`          | Airspeed (m/s). **Only shown for ArduPlane fixed-wing or VTOL** (`HEARTBEAT.type` 1 or 19 + autopilot ArduPilot) - on those the EKF synthesises an airspeed from the wind estimator even without a pitot. On iNav and copters AS is hidden because the field is just a ground-speed mirror or unused |
+| GS           | `GLOBAL_POSITION_INT.vx/vy` | EKF-fused horizontal ground speed (not raw GPS) |
 | Bat V        | `SYS_STATUS.voltage_battery` | Volts |
 | Bat %        | `SYS_STATUS.battery_remaining` | 0-100 %, hidden if -1 (unknown) |
 | RSSI         | `RADIO_STATUS.rssi`          | mLRS reports 0-100% directly (not 0-254 SiK); `---` if unknown |
@@ -235,6 +239,7 @@ UDP variant adds:
 | 1  | `SYS_STATUS`          | `voltage_battery`, `battery_remaining` |
 | 24 | `GPS_RAW_INT`         | `fix_type`, `satellites_visible` |
 | 33 | `GLOBAL_POSITION_INT` | `lat`, `lon`, `alt`, `vx`, `vy`, `hdg` |
+| 74 | `VFR_HUD`             | `airspeed` (only displayed on ArduPlane fixed-wing / VTOL) |
 | 109 | `RADIO_STATUS`       | `rssi` (treated as 0-100% per mLRS, not 0-254 SiK) |
 
 All other messages are still forwarded over UART -- only these are decoded for
