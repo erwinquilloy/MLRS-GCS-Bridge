@@ -598,6 +598,11 @@ void setup_udp(void) {
     udp.begin(UDP_PORT);
 
     IPAddress ip = WiFi.localIP();
+    IPAddress gw = WiFi.gatewayIP();
+    Serial.print("[udp] me=");      Serial.print(ip);
+    Serial.print(" gateway=");      Serial.print(gw);
+    Serial.print(" mask=");         Serial.println(WiFi.subnetMask());
+
     char l1[24], l2b[24];
     snprintf(l1, sizeof(l1), "IP:%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     snprintf(l2b, sizeof(l2b), "UDP:%d waiting", UDP_PORT);
@@ -813,11 +818,33 @@ void loop_udp(unsigned long tnow_ms) {
 
     // Presence ping: keep us in the mLRS bridge's UDP client list so it
     // unicasts downlink to us even after another GCS registers.
+    //
+    // Destination preference:
+    //   1. latched peer IP (after we've received anything once),
+    //   2. gateway IP from DHCP,
+    //   3. .1 host on our /24 subnet - mLRS doesn't always advertise a
+    //      gateway, and without it WiFi.gatewayIP() returns 0.0.0.0
+    //      which would silently skip the ping.
     static unsigned long ping_t = 0;
+    static bool ping_logged = false;
     if (tnow_ms - ping_t >= 1000) {
         ping_t = tnow_ms;
-        IPAddress dest = udp_peer_latched ? udp_peer_ip : WiFi.gatewayIP();
+        IPAddress dest;
+        if (udp_peer_latched) {
+            dest = udp_peer_ip;
+        } else {
+            dest = WiFi.gatewayIP();
+            if (dest[0] == 0) {
+                IPAddress me = WiFi.localIP();
+                dest = IPAddress(me[0], me[1], me[2], 1);
+            }
+        }
         if (dest[0] != 0) {
+            if (!ping_logged) {
+                Serial.print("[udp] presence_ping -> ");
+                Serial.println(dest);
+                ping_logged = true;
+            }
             uint8_t pingbyte = 0x00;
             udp.beginPacket(dest, UDP_PORT);
             udp.write(&pingbyte, 1);
