@@ -9,14 +9,16 @@ SSD1306 OLED. Three sketches are provided:
 | `mlrs_gcs_heltec_v2/` (recommended) | **Either** - selectable at runtime via the PRG button | Day-to-day; flash once and toggle without re-flashing |
 | `mlrs_espnow_gcs_heltec_v2/` | ESP-NOW (raw 802.11) | Reference sketch for the ESP-NOW link layer alone |
 | `mlrs_udp_gcs_heltec_v2/` | WiFi UDP (joins Nomad SoftAP) | Reference sketch for the WiFi-UDP link layer alone |
-| `mlrs_gcs_esp32_v2/` | **Either** - same toggle as the combined Heltec sketch | Generic ESP32 dev boards with no OLED; status/telemetry print to USB serial instead |
-| `mlrs_espnow_gcs_esp32_v2/` | ESP-NOW (raw 802.11) | Generic ESP32 reference sketch for the ESP-NOW link layer alone |
-| `mlrs_udp_gcs_esp32_v2/`    | WiFi UDP (joins Nomad SoftAP) | Generic ESP32 reference sketch for the WiFi-UDP link layer alone |
+| `mlrs_espnow_gcs_esp32_v2/` | ESP-NOW (raw 802.11) | Generic ESP32 (no OLED); reference sketch for the ESP-NOW link layer alone |
+| `mlrs_udp_gcs_esp32_v2/`    | WiFi UDP (joins Nomad SoftAP) | Generic ESP32 (no OLED); reference sketch for the WiFi-UDP link layer alone |
 
 > **Note:** Only the Heltec sketches have been tested end-to-end on real
-> hardware. The three `*_esp32_v2` ports compile and mirror the Heltec
-> logic line-for-line (minus OLED), but they are **not fully tested yet**
-> - treat them as a starting point for bare-ESP32 boards.
+> hardware. The two `*_esp32_v2` ports compile and mirror the Heltec
+> single-mode logic line-for-line (minus OLED), but they are **not fully
+> tested yet** - treat them as a starting point for bare-ESP32 boards.
+> There is intentionally no combined ESP32 sketch: the PRG-toggle UX
+> depends on the OLED countdown, so on bare ESP32 you just flash whichever
+> single-mode sketch you need.
 
 The combined sketch defaults to **WiFi UDP** on a fresh flash. To toggle:
 power-cycle and **hold the onboard PRG button (GPIO0) for the entire boot
@@ -71,13 +73,13 @@ The choice is persisted to NVS via `Preferences`, so it survives reboots.
 
 > **Status:** not fully tested yet. The Heltec sketches are the ones
 > validated on real hardware; the ESP32 ports compile and mirror the
-> Heltec logic minus OLED, but should be treated as a starting point.
+> Heltec single-mode logic minus OLED, but should be treated as a
+> starting point.
 
-There are three ESP32 sketches matching the three Heltec ones:
+Two ESP32 sketches matching the two single-mode Heltec sketches:
 
 | Sketch | Equivalent Heltec sketch |
 | ------ | ------------------------ |
-| `mlrs_gcs_esp32_v2`        | `mlrs_gcs_heltec_v2` (combined, runtime-toggleable) |
 | `mlrs_espnow_gcs_esp32_v2` | `mlrs_espnow_gcs_heltec_v2` (ESP-NOW only) |
 | `mlrs_udp_gcs_esp32_v2`    | `mlrs_udp_gcs_heltec_v2` (WiFi UDP only) |
 
@@ -85,22 +87,21 @@ Functionally identical to their Heltec counterparts, but with all
 SSD1306 code removed so they build and run on any generic ESP32 dev
 board.
 
-- No Adafruit_GFX / Adafruit_SSD1306 dependency on any of the three.
-- Boot splash, mode toggle countdown (combined sketch only), and
-  telemetry HUD print to the USB serial monitor (115200 baud) instead
-  of the OLED.
-- For the combined sketch: the BOOT button (GPIO0) on a standard ESP32
-  dev board takes the place of the Heltec's PRG button - hold it for
-  the whole ~2.5 s boot window to swap modes. Watch the serial monitor
-  for the countdown.
+- No Adafruit_GFX / Adafruit_SSD1306 dependency.
+- Status and telemetry print to the USB serial monitor (115200 baud)
+  instead of the OLED.
 - Pins freed compared to the Heltec builds: GPIO4 / 15 / 16 are no
   longer used. UART RX is still left disabled (`-1`) for the Crossbow
   path; if you have a back-channel from the Crossbow you can wire a
   real RX pin.
-- The single-mode `mlrs_udp_gcs_esp32_v2` mirrors the Heltec single-mode
-  UDP sketch, which still uses the older 1-byte presence ping; the
-  MAVLink-HEARTBEAT presence ping + gateway fallback are only in the
-  combined sketches.
+- `mlrs_udp_gcs_esp32_v2` mirrors the Heltec single-mode UDP sketch,
+  which uses the older 1-byte presence ping; the MAVLink-HEARTBEAT
+  presence ping + gateway fallback are only in the combined Heltec
+  sketch.
+- There is intentionally no combined ESP32 sketch. The PRG-toggle UX
+  on the combined Heltec sketch depends on the OLED countdown during
+  boot, which doesn't translate cleanly to a bare ESP32 - flash
+  whichever single-mode sketch you need instead.
 
 ## Hardware
 
@@ -140,7 +141,6 @@ The Nomad's WiFi Bridge mode **must match the sketch you flash**:
 | Sketch you flash | Nomad WiFi Bridge mode |
 | ---------------- | ---------------------- |
 | `mlrs_gcs_heltec_v2` (combined) | match the **active mode** the Heltec is currently in (`ESP-NOW` or `WiFi UDP`) - toggle one to match the other |
-| `mlrs_gcs_esp32_v2` (combined, no OLED) | match the **active mode** the ESP32 is currently in - check the serial monitor for the current mode at boot |
 | `mlrs_espnow_gcs_heltec_v2` | `ESP-NOW` |
 | `mlrs_udp_gcs_heltec_v2`    | `WiFi UDP` |
 | `mlrs_espnow_gcs_esp32_v2` | `ESP-NOW` |
@@ -160,17 +160,16 @@ After changing the mode, reboot the Nomad so the new radio mode takes effect.
 
 1. Install the **ESP32 Arduino core >= 3.0.0** via Boards Manager.
 2. Install these libraries via Library Manager (**Heltec sketches only**;
-   `mlrs_gcs_esp32_v2` has no library dependencies):
+   the `*_esp32_v2` sketches have no library dependencies):
    - Adafruit SSD1306
    - Adafruit GFX Library
 3. Board:
    - Heltec sketches: **ESP32 Arduino -> Heltec WiFi Kit 32**
-   - `mlrs_gcs_esp32_v2`: **ESP32 Arduino -> ESP32 Dev Module** (or
+   - `*_esp32_v2` sketches: **ESP32 Arduino -> ESP32 Dev Module** (or
      whichever generic ESP32 board you're using)
 4. Open the `.ino` for the sketch you want - normally
-   `mlrs_gcs_heltec_v2/mlrs_gcs_heltec_v2.ino` (combined, runtime-toggleable),
-   `mlrs_gcs_esp32_v2/mlrs_gcs_esp32_v2.ino` (combined, no OLED), or one
-   of the reference single-mode sketches - then Upload.
+   `mlrs_gcs_heltec_v2/mlrs_gcs_heltec_v2.ino` (combined, runtime-toggleable)
+   or one of the single-mode sketches - then Upload.
 
 ### Configurable defaults
 
@@ -181,9 +180,9 @@ Set at the top of each `.ino`:
 | `CROSSBOW_BAUD` | `115200` | UART baud to the Crossbow |
 | `TX_PIN` | `17` | UART TX pin |
 | `OLED_UPDATE_MS` | `200` | OLED refresh interval |
-| `OLED_SDA` / `OLED_SCL` / `OLED_RST` | `4` / `15` / `16` | OLED I2C pins (Heltec defaults; absent in `mlrs_gcs_esp32_v2`) |
-| `OLED_ADDR` | `0x3C` | SSD1306 I2C address (absent in `mlrs_gcs_esp32_v2`) |
-| `STATUS_UPDATE_MS` | `2000` | (ESP32 sketch only) serial status print cadence |
+| `OLED_SDA` / `OLED_SCL` / `OLED_RST` | `4` / `15` / `16` | OLED I2C pins (Heltec defaults; absent in `*_esp32_v2`) |
+| `OLED_ADDR` | `0x3C` | SSD1306 I2C address (absent in `*_esp32_v2`) |
+| `STATUS_UPDATE_MS` | `2000` | (`*_esp32_v2` sketches only) serial status print cadence |
 
 UDP variant adds:
 
