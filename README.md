@@ -1,4 +1,4 @@
-# MLRS-ESPNOW
+# MLRS-GCS-Bridge
 
 Heltec WiFi Kit 32 firmware that bridges an mLRS Nomad to an
 **MFD Mini Crossbow** OSD over UART, with live telemetry on the onboard
