@@ -33,6 +33,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+// Forward declaration so Arduino's auto-generated function prototypes -
+// inserted between the #includes and the first function definition - can
+// reference MavPacket before its full definition appears further down.
+struct MavPacket;
+
 //-------------------------------------------------------
 // USER CONFIGURATION
 //-------------------------------------------------------
