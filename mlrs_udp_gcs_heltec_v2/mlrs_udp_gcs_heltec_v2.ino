@@ -29,6 +29,7 @@
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <esp_wifi.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -387,6 +388,12 @@ void setup_wifi_udp(void) {
     // our UDP state on every brief disassoc (e.g. when a 2nd client joins).
     WiFi.persistent(true);
     WiFi.setAutoReconnect(true);
+
+    // Brownout mitigation: force 802.11b (flatter TX envelope, matches the
+    // ESP-NOW sketch) and cap TX power at 11 dBm. ~30% of stock peak draw,
+    // still ~15 dB of link margin to the Nomad at 15-20 m.
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B);
+    WiFi.setTxPower(WIFI_POWER_11dBm);
 
     char l2[24];
     snprintf(l2, sizeof(l2), "SSID:%s", WIFI_SSID);
