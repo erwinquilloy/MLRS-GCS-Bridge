@@ -35,9 +35,12 @@ SSD1306 OLED. Two link-layer variants are provided in this repo:
 
 ## WiFi UDP variant specifics
 
-- Heltec joins the Nomad's SoftAP. Set `WIFI_SSID` and `WIFI_PASS` at the top
-  of `mlrs_udp_gcs_heltec_v2.ino` to match whatever the Nomad's WiFi Bridge
-  is configured with - they are intentionally left blank in the sketch.
+- Heltec joins the Nomad's SoftAP. The Nomad generates an SSID from its MAC
+  in the form `mLRS-xxxx AP UDP` - check your Tx OLED/CLI for the exact name
+  and put it in `WIFI_SSID` at the top of `mlrs_udp_gcs_heltec_v2.ino`.
+- **UDP mode has no password by default** per the
+  [mLRS wireless-bridge docs](https://github.com/olliw42/mLRS-docu/blob/main/docs/WIRELESS_BRIDGE.md),
+  so leave `WIFI_PASS` empty unless you've explicitly set one on the Nomad.
 - Listens on UDP port `14550` and latches the first peer's IP/port for uplink.
 - Multiple GCS clients (e.g. a phone running QGC + this bridge) can attach to
   the same Nomad AP simultaneously. Be aware that if more than one client
@@ -109,8 +112,8 @@ UDP variant adds:
 
 | Define | Default | Purpose |
 | ------ | ------- | ------- |
-| `WIFI_SSID` | _(empty - you must set this)_ | Nomad SoftAP SSID |
-| `WIFI_PASS` | _(empty - you must set this)_ | Nomad SoftAP password |
+| `WIFI_SSID` | _(empty - set to your Nomad's `mLRS-xxxx AP UDP` SSID)_ | Nomad SoftAP SSID |
+| `WIFI_PASS` | _(empty - UDP mode is open by default; leave blank unless you set one)_ | Nomad SoftAP password |
 | `UDP_PORT` | `14550` | MAVLink UDP port |
 
 ## Supported MAVLink messages

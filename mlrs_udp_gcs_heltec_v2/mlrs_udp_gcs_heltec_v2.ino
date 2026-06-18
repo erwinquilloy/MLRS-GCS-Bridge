@@ -37,7 +37,10 @@
 // USER CONFIGURATION
 //-------------------------------------------------------
 
-// Set these to match your mLRS Nomad's WiFi Bridge (UDP mode) settings.
+// Set WIFI_SSID to your Nomad's SoftAP name. mLRS generates it from the
+// device MAC, so it looks like "mLRS-xxxx AP UDP" - check your Tx OLED or
+// CLI for the exact value. UDP mode has no password by default, so leave
+// WIFI_PASS empty unless you set one on the Nomad.
 #define WIFI_SSID       ""
 #define WIFI_PASS       ""
 #define UDP_PORT        14550
