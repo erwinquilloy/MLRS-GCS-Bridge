@@ -32,6 +32,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <esp_system.h>
 
 //-------------------------------------------------------
 // USER CONFIGURATION
@@ -428,8 +429,54 @@ void setup_wifi_udp(void) {
 // setup() and loop()
 //-------------------------------------------------------
 
+const char* reset_reason_str(esp_reset_reason_t r) {
+    switch (r) {
+        case ESP_RST_POWERON:   return "POWERON";
+        case ESP_RST_EXT:       return "EXT (RST pin)";
+        case ESP_RST_SW:        return "SW (esp_restart)";
+        case ESP_RST_PANIC:     return "PANIC (Guru Meditation)";
+        case ESP_RST_INT_WDT:   return "INT_WDT (interrupt watchdog)";
+        case ESP_RST_TASK_WDT:  return "TASK_WDT (task watchdog)";
+        case ESP_RST_WDT:       return "WDT (other watchdog)";
+        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+        case ESP_RST_BROWNOUT:  return "BROWNOUT";
+        case ESP_RST_SDIO:      return "SDIO";
+        default:                return "UNKNOWN";
+    }
+}
+
+void wifi_event_handler(WiFiEvent_t ev, WiFiEventInfo_t info) {
+    switch (ev) {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+            Serial.println("[wifi] STA_CONNECTED");
+            break;
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            Serial.print("[wifi] GOT_IP ");
+            Serial.println(WiFi.localIP());
+            break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+            Serial.print("[wifi] DISCONNECTED reason=");
+            Serial.println(info.wifi_sta_disconnected.reason);
+            break;
+        default:
+            break;
+    }
+}
+
 void setup() {
     Serial.begin(115200);
+    delay(200);
+
+    Serial.println();
+    Serial.print("[boot] reset_reason=");
+    Serial.print((int)esp_reset_reason());
+    Serial.print(" (");
+    Serial.print(reset_reason_str(esp_reset_reason()));
+    Serial.println(")");
+    Serial.print("[boot] free_heap=");
+    Serial.println(ESP.getFreeHeap());
+
+    WiFi.onEvent(wifi_event_handler);
 
     oled_init();
     oled_status("Initializing...", "mLRS UDP GCS");
@@ -541,6 +588,20 @@ void loop() {
             udp.write(&pingbyte, 1);
             udp.endPacket();
         }
+    }
+
+    // Periodic heap snapshot - if we're leaking we'll see free_heap fall.
+    static unsigned long heap_t = 0;
+    if (tnow_ms - heap_t >= 5000) {
+        heap_t = tnow_ms;
+        Serial.print("[heap] free=");
+        Serial.print(ESP.getFreeHeap());
+        Serial.print(" min=");
+        Serial.print(ESP.getMinFreeHeap());
+        Serial.print(" wifi=");
+        Serial.print(WiFi.status() == WL_CONNECTED ? "OK" : "DOWN");
+        Serial.print(" rssi=");
+        Serial.println(WiFi.RSSI());
     }
 
     // OLED refresh
