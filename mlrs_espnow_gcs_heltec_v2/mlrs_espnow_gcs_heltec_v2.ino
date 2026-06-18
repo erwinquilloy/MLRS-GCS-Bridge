@@ -471,6 +471,11 @@ void setup_wifi(void) {
 
     esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B);
 
+    // Set TX power explicitly so this sketch is self-documenting and not
+    // dependent on whatever the WiFi NVS happens to hold from a previous
+    // flash (e.g. the UDP variant persists its 11 dBm cap to NVS).
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+
     esp_now_init();
     esp_now_register_recv_cb(espnow_recv_cb);
 
