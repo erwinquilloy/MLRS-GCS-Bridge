@@ -58,6 +58,7 @@ Adafruit_SSD1306 display(128, 64, &Wire, OLED_RST);
 #define MAVLINK_MSG_ID_GLOBAL_POSITION_INT  33
 #define MAVLINK_MSG_ID_VFR_HUD              74
 #define MAVLINK_MSG_ID_RADIO_STATUS         109
+#define MAVLINK_MSG_ID_HOME_POSITION        242
 
 struct MavPacket {
     bool     valid;
@@ -153,7 +154,9 @@ float     telem_lon         = 0.0f;
 float     telem_alt_m       = 0.0f;
 float     telem_spd_ms      = 0.0f;
 float     telem_airspeed_ms = 0.0f;
-float     telem_hdg_deg     = 0.0f;
+float     home_lat          = 0.0f;
+float     home_lon          = 0.0f;
+bool      home_set          = false;
 int       telem_satellites  = 0;
 uint8_t   telem_fix         = 0;
 float     telem_bat_v       = 0.0f;
@@ -227,9 +230,18 @@ void process_mavlink_packet(MavPacket& pkt) {
                 int16_t vx   = (int16_t)mav_get_u16(p, 20);
                 int16_t vy   = (int16_t)mav_get_u16(p, 22);
                 telem_spd_ms  = sqrtf((float)(vx*vx + vy*vy)) / 100.0f;
-                uint16_t h   = mav_get_u16(p, 26);
-                if (h != 65535) telem_hdg_deg = h / 100.0f;
                 telem_gps_ok  = true;
+            }
+            break;
+
+        case MAVLINK_MSG_ID_HOME_POSITION:
+            // int32 latitude @0 (deg*1e7), int32 longitude @4 (deg*1e7).
+            // ArduPilot streams this on arming / home update; matches what
+            // Mission Planner and Yaapu use to compute distance to home.
+            if (pkt.payload_len >= 8) {
+                home_lat = (float)mav_get_i32(p, 0) / 1e7f;
+                home_lon = (float)mav_get_i32(p, 4) / 1e7f;
+                home_set = true;
             }
             break;
 
@@ -297,6 +309,31 @@ void process_mavlink_packet(MavPacket& pkt) {
 
 
 //-------------------------------------------------------
+// Distance-to-home (equirectangular approximation, good to ~10 km)
+//-------------------------------------------------------
+
+float distance_to_home_m() {
+    if (!home_set || !telem_gps_ok) return -1.0f;
+    float home_lat_rad = home_lat * (PI / 180.0f);
+    float dlat_m = (telem_lat - home_lat) * 111320.0f;
+    float dlon_m = (telem_lon - home_lon) * 111320.0f * cosf(home_lat_rad);
+    return sqrtf(dlat_m * dlat_m + dlon_m * dlon_m);
+}
+
+void format_dist_to_home(char* buf, size_t n) {
+    float d = distance_to_home_m();
+    if (d < 0)            snprintf(buf, n, "----");
+    else if (d < 1000.0f) snprintf(buf, n, "%3.0fm", d);
+    else                  snprintf(buf, n, "%.2fkm", d / 1000.0f);
+}
+
+void format_alt(char* buf, size_t n) {
+    if (telem_alt_m < 1000.0f) snprintf(buf, n, "%4.0fm", telem_alt_m);
+    else                       snprintf(buf, n, "%.2fkm", telem_alt_m / 1000.0f);
+}
+
+
+//-------------------------------------------------------
 // OLED display — Adafruit SSD1306
 //-------------------------------------------------------
 
@@ -346,8 +383,11 @@ void oled_telem() {
         display.printf("\n");
     }
 
-    // Line 3: Alt + heading (combined to free room for AS+GS)
-    display.printf("Alt:%4.0fm Hdg:%3d\n", telem_alt_m, (int)telem_hdg_deg);
+    // Line 3: Alt + distance to home (combined to free room for AS+GS)
+    char abuf[8], hbuf[8];
+    format_alt(abuf, sizeof(abuf));
+    format_dist_to_home(hbuf, sizeof(hbuf));
+    display.printf("Alt:%s Home:%s\n", abuf, hbuf);
 
     // Line 4: Speed - ArduPlane (fixed-wing or VTOL) gets a real or
     // EKF-synthesised airspeed alongside ground speed; iNav without a pitot

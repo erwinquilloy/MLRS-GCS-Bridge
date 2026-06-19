@@ -37,7 +37,7 @@ The choice is persisted to NVS via `Preferences`, so it survives reboots.
 - Bidirectional MAVLink bridge (downlink + uplink).
 - Built-in MAVLink v1/v2 parser (no MAVLink library dependency).
 - Decoded telemetry on OLED: flight mode, arm state, GPS fix/sats, lat/lon,
-  altitude, heading, ground speed (plus airspeed on ArduPlane/VTOL),
+  altitude, distance to home, ground speed (plus airspeed on ArduPlane/VTOL),
   battery V/%, and RSSI %.
 - ArduPilot / iNav firmware autodetection from the HEARTBEAT autopilot field
   (mode names are mapped accordingly).
@@ -53,7 +53,8 @@ refreshed every 200 ms:
 MANUAL  ARM S:12 ARDU      <- flight mode | arm state | sats | autopilot
 Lat: XX.XXXXXX             <- latitude  (or "Fix:Nd No GPS" if no fix)
 Lon:XXX.XXXXXX             <- longitude (or blank             if no fix)
-Alt:  42m Hdg: 87          <- altitude (m) and heading (deg)
+Alt: 234m Home:567m        <- altitude + distance to home
+                              (m below 1 km, "1.23km" at or above)
 AS: 14 GS: 18 m/s          <- airspeed + ground speed (ArduPlane/VTOL)
                               -- OR --
 GS: 18 m/s                 <- ground speed only (iNav, copter, unknown)
@@ -68,8 +69,8 @@ RSSI: 73% LINK OK          <- mLRS RSSI (0-100%) and link state
 | Sats         | `GPS_RAW_INT.satellites_visible` | Satellite count |
 | Autopilot    | `HEARTBEAT.autopilot`       | `ARDU` (ArduPilot=3) / `iNAV` (iNav=12) / `?` until first HEARTBEAT |
 | Lat / Lon    | `GLOBAL_POSITION_INT.lat/lon` | Degrees, 6 dp; falls back to "Fix:Nd No GPS" using `GPS_RAW_INT.fix_type` when no GPS lock |
-| Alt          | `GLOBAL_POSITION_INT.alt`   | Metres above sea level (mm in MAVLink, converted) |
-| Hdg          | `GLOBAL_POSITION_INT.hdg`   | Compass heading in degrees |
+| Alt          | `GLOBAL_POSITION_INT.alt`   | Above sea level (mm in MAVLink, converted). Metres below 1 km (e.g. `234m`), km with two decimals at or above (e.g. `1.23km`) |
+| Home         | `HOME_POSITION.lat/lon` + `GLOBAL_POSITION_INT.lat/lon` | Straight-line distance from current position to autopilot's official home. Home coords are taken from `HOME_POSITION` (msg 242) which ArduPilot streams on arming and on home updates -- this matches what Mission Planner and Yaapu compute. Displayed in metres below 1 km (e.g. `234m`) and in km with two decimals at or above (e.g. `1.23km`). Shows `----` until `HOME_POSITION` arrives (typically after the vehicle arms) |
 | AS           | `VFR_HUD.airspeed`          | Airspeed (m/s). **Only shown for ArduPlane fixed-wing or VTOL** (`HEARTBEAT.type` 1 or 19 + autopilot ArduPilot) - on those the EKF synthesises an airspeed from the wind estimator even without a pitot. On iNav and copters AS is hidden because the field is just a ground-speed mirror or unused |
 | GS           | `GLOBAL_POSITION_INT.vx/vy` | EKF-fused horizontal ground speed in m/s (not raw GPS) |
 | Bat V        | `SYS_STATUS.voltage_battery` | Volts |
@@ -238,9 +239,10 @@ UDP variant adds:
 | 0  | `HEARTBEAT`           | `type`, `autopilot`, `base_mode`, `custom_mode` |
 | 1  | `SYS_STATUS`          | `voltage_battery`, `battery_remaining` |
 | 24 | `GPS_RAW_INT`         | `fix_type`, `satellites_visible` |
-| 33 | `GLOBAL_POSITION_INT` | `lat`, `lon`, `alt`, `vx`, `vy`, `hdg` |
+| 33 | `GLOBAL_POSITION_INT` | `lat`, `lon`, `alt`, `vx`, `vy` |
 | 74 | `VFR_HUD`             | `airspeed` (only displayed on ArduPlane fixed-wing / VTOL) |
 | 109 | `RADIO_STATUS`       | `rssi` (treated as 0-100% per mLRS, not 0-254 SiK) |
+| 242 | `HOME_POSITION`      | `latitude`, `longitude` (autopilot's official home, used to compute distance-to-home) |
 
 All other messages are still forwarded over UART -- only these are decoded for
 the on-board OLED.
