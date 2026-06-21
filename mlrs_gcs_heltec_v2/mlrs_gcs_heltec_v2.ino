@@ -1,5 +1,5 @@
 //*******************************************************
-// mLRS GCS Bridge - Heltec WiFi Kit 32 v1/v2 (combined)
+// mLRS GCS Bridge - Heltec WiFi Kit 32 v1/v2/v3 (combined)
 // Switches between ESP-NOW and WiFi UDP link layers at
 // runtime via the onboard PRG button (GPIO0). Mode is
 // persisted to NVS so it survives reboots.
@@ -17,7 +17,10 @@
 //   - Adafruit SSD1306
 //   - Adafruit GFX Library
 //
-// Board: Tools -> Board -> ESP32 Arduino -> Heltec WiFi Kit 32
+// Board (v1/v2): Tools -> Board -> ESP32 Arduino -> Heltec WiFi Kit 32
+// Board (v3/v4): Tools -> Board -> ESP32 Arduino -> Heltec WiFi Kit 32(V3)
+// Pin map is chosen automatically from the selected board's MCU target
+// (ESP32 for v1/v2, ESP32-S3 for v3/v4).
 // ESP32 Arduino core >= 3.0.0
 //
 // License: GPL v3
@@ -50,17 +53,29 @@ struct MavPacket;
 #define UDP_PORT        14550
 
 #define CROSSBOW_BAUD   115200
-#define TX_PIN          17     // GPIO17 -> Crossbow MAVLink input
 
 #define OLED_UPDATE_MS  200
 
-#define PRG_PIN         0      // Onboard PRG button (active LOW)
+#define PRG_PIN         0      // Onboard PRG button (active LOW, both board generations)
 #define SPLASH_MS       2500   // Hold PRG this long during splash to toggle
 
-// OLED pins - Heltec WiFi Kit 32 v1/v2
-#define OLED_SDA        4
-#define OLED_SCL        15
-#define OLED_RST        16
+// Board-specific pin map. The ESP32-S3 branch covers Heltec WiFi Kit 32 v3
+// (and v4, which keeps the same OLED layout). The original ESP32 branch
+// covers v1/v2. On v3 GPIO17 is the OLED SDA, so the Crossbow UART has to
+// move; GPIO33 is broken out on the V3 header and is neither a strapping
+// pin nor a USB D+/- line.
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  #define TX_PIN        33     // Crossbow MAVLink input (Heltec V3 free GPIO)
+  #define OLED_SDA      17
+  #define OLED_SCL      18
+  #define OLED_RST      21
+  #define VEXT_PIN      36     // Drive LOW to power the OLED rail (Vext)
+#else
+  #define TX_PIN        17     // GPIO17 -> Crossbow MAVLink input
+  #define OLED_SDA      4
+  #define OLED_SCL      15
+  #define OLED_RST      16
+#endif
 #define OLED_ADDR       0x3C
 
 Adafruit_SSD1306 display(128, 64, &Wire, OLED_RST);
@@ -412,6 +427,13 @@ void format_alt(char* buf, size_t n) {
 //-------------------------------------------------------
 
 void oled_init() {
+#if defined(VEXT_PIN)
+    // Heltec V3/V4: OLED rail is gated by Vext. Drive LOW to power it
+    // before talking to the SSD1306.
+    pinMode(VEXT_PIN, OUTPUT);
+    digitalWrite(VEXT_PIN, LOW);
+    delay(50);
+#endif
     pinMode(OLED_RST, OUTPUT);
     digitalWrite(OLED_RST, LOW);
     delay(20);

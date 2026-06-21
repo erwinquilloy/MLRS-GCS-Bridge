@@ -1,5 +1,5 @@
 //*******************************************************
-// mLRS WiFi-UDP GCS Bridge - Heltec WiFi Kit 32 v1/v2
+// mLRS WiFi-UDP GCS Bridge - Heltec WiFi Kit 32 v1/v2/v3
 // Receives MAVLink from mLRS Nomad via WiFi UDP and
 // forwards to MFD Mini Crossbow via UART (Serial2)
 // Also displays telemetry on built-in OLED display
@@ -11,18 +11,23 @@
 //
 // Uses Adafruit SSD1306 + Adafruit GFX (not heltec.h)
 // Compatible with Heltec WiFi Kit 32 v1/v2 (micro-USB)
+// and v3/v4 (USB-C, ESP32-S3) - pin map auto-selected
+// from the board target.
 //
 // Libraries required (Library Manager):
 //   - Adafruit SSD1306
 //   - Adafruit GFX Library
 //
-// Board: Tools -> Board -> ESP32 Arduino -> Heltec WiFi Kit 32
+// Board (v1/v2): Tools -> Board -> ESP32 Arduino -> Heltec WiFi Kit 32
+// Board (v3/v4): Tools -> Board -> ESP32 Arduino -> Heltec WiFi Kit 32(V3)
 // ESP32 Arduino core >= 3.0.0
 //
 // Wiring to MFD Mini Crossbow:
-//   Heltec GPIO17 (TX2)  -->  Crossbow MAVLink input pin
-//   Heltec GND           -->  Crossbow GND
-//   Power Heltec via micro-USB
+//   v1/v2: Heltec GPIO17 (TX2) --> Crossbow MAVLink input pin
+//   v3/v4: Heltec GPIO33       --> Crossbow MAVLink input pin
+//          (GPIO17 is the OLED SDA on v3, so TX moves)
+//   Heltec GND --> Crossbow GND
+//   Power Heltec via USB
 //
 // License: GPL v3
 //*******************************************************
@@ -48,15 +53,27 @@
 #define UDP_PORT        14550
 
 #define CROSSBOW_BAUD   115200
-#define TX_PIN          17    // GPIO17 -> Crossbow MAVLink input
-// RX disabled (-1) so GPIO16 stays free for OLED reset
+// RX disabled (-1) so the OLED reset pin stays free.
 
 #define OLED_UPDATE_MS  200
 
-// OLED pins - Heltec WiFi Kit 32 v1/v2
-#define OLED_SDA        4
-#define OLED_SCL        15
-#define OLED_RST        16
+// Board-specific pin map. The ESP32-S3 branch covers Heltec WiFi Kit 32 v3
+// (and v4, which keeps the same OLED layout). The original ESP32 branch
+// covers v1/v2. On v3 GPIO17 is the OLED SDA, so the Crossbow UART has to
+// move; GPIO33 is broken out on the V3 header and is neither a strapping
+// pin nor a USB D+/- line.
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  #define TX_PIN        33    // Crossbow MAVLink input (Heltec V3 free GPIO)
+  #define OLED_SDA      17
+  #define OLED_SCL      18
+  #define OLED_RST      21
+  #define VEXT_PIN      36    // Drive LOW to power the OLED rail (Vext)
+#else
+  #define TX_PIN        17    // GPIO17 -> Crossbow MAVLink input
+  #define OLED_SDA      4
+  #define OLED_SCL      15
+  #define OLED_RST      16
+#endif
 #define OLED_ADDR       0x3C
 
 Adafruit_SSD1306 display(128, 64, &Wire, OLED_RST);
@@ -348,6 +365,13 @@ void format_alt(char* buf, size_t n) {
 //-------------------------------------------------------
 
 void oled_init() {
+#if defined(VEXT_PIN)
+    // Heltec V3/V4: OLED rail is gated by Vext. Drive LOW to power it
+    // before talking to the SSD1306.
+    pinMode(VEXT_PIN, OUTPUT);
+    digitalWrite(VEXT_PIN, LOW);
+    delay(50);
+#endif
     pinMode(OLED_RST, OUTPUT);
     digitalWrite(OLED_RST, LOW);
     delay(20);

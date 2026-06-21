@@ -109,6 +109,50 @@ mode and PRG hold prompt.
 - Auto-reconnects if the AP drops, with a 3 s grace window so a brief
   disassoc (e.g. another client joining) doesn't tear down our UDP state.
 
+## Heltec V3/V4 specifics
+
+> **Status:** V3 is supported via the same sketches as v1/v2 - the pin map
+> is chosen at compile time from the board target. V4 is expected to work
+> (Heltec kept the same OLED layout) but is **not yet validated on real
+> hardware**; if Heltec changes pins on V4, edit the
+> `#if defined(CONFIG_IDF_TARGET_ESP32S3)` block at the top of each Heltec
+> sketch.
+
+What changes vs v1/v2:
+
+| Thing | v1/v2 | v3/v4 |
+| ----- | ----- | ----- |
+| MCU | ESP32 | ESP32-S3 |
+| USB | micro-USB (CP2102 -> UART0) | USB-C (native USB-CDC) |
+| Crossbow TX pin | `GPIO17` | `GPIO33` |
+| OLED SDA / SCL / RST | `4` / `15` / `16` | `17` / `18` / `21` |
+| OLED power | always on | gated by Vext (`GPIO36` LOW = on) |
+
+Step-by-step:
+
+1. Install the **ESP32 Arduino core >= 3.0.0** (same as v1/v2). The v3/v4
+   board target ships with this core - no separate Heltec board package is
+   required.
+2. In Arduino IDE: **Tools -> Board -> ESP32 Arduino -> Heltec WiFi Kit 32(V3)**.
+   The sketch source is the same; selecting this board sets
+   `CONFIG_IDF_TARGET_ESP32S3` and the pin map / Vext init switch
+   automatically.
+3. Connect with a **USB-C** cable. The V3 enumerates as a native USB-CDC
+   serial port (no CP210x driver needed). On first flash some hosts need
+   you to **hold the BOOT (PRG) button while pressing RST** to drop into
+   the ROM bootloader; after the first successful flash, the IDE can
+   trigger the reset itself.
+4. Wire **Heltec `GPIO33`** (not `GPIO17`) to the Crossbow MAVLink input.
+   `GPIO17` is the OLED I2C SDA on V3 and is not available for UART.
+5. Library installation, `WIFI_SSID`/`WIFI_PASS` setup, Nomad WiFi Bridge
+   mode, and the PRG-toggle UX on the combined sketch all work the same as
+   on v1/v2.
+
+The Vext rail is gated by `GPIO36` on V3/V4. The sketches drive it LOW
+during `oled_init()` before talking to the SSD1306; if you ever fork this
+to use other Vext-powered peripherals, keep that pin asserted LOW for the
+whole session.
+
 ## Bare-ESP32 variants (`mlrs_*_esp32_v2`)
 
 > **Status:** not fully tested yet. The Heltec sketches are the ones
@@ -147,20 +191,22 @@ board.
 
 | Item | Notes |
 | ---- | ----- |
-| Heltec WiFi Kit 32 | v1 or v2 (micro-USB variants); both share the same OLED pinout used here |
+| Heltec WiFi Kit 32 | v1/v2 (micro-USB, ESP32) and v3 (USB-C, ESP32-S3) are both supported. v4 should also work since it keeps the v3 OLED layout, but it is **unverified** - if Heltec changes pins, edit the `#if defined(CONFIG_IDF_TARGET_ESP32S3)` block at the top of each sketch. Pin map is auto-selected from the board target you pick in the IDE |
 | MFD Mini Crossbow OSD | MAVLink input @ 115200 8N1 |
 | mLRS Nomad | Configured as the matching bridge counterpart (see below) |
 
 ### Wiring
 
-| Heltec pin | Connects to |
-| ---------- | ----------- |
-| `GPIO17` (TX2) | Crossbow MAVLink input |
-| `GND`          | Crossbow GND |
-| 5 V in         | USB or a dedicated UBEC (see Power below) |
+| Heltec pin (v1/v2) | Heltec pin (v3/v4) | Connects to |
+| ------------------ | ------------------ | ----------- |
+| `GPIO17` (TX2)     | `GPIO33`           | Crossbow MAVLink input |
+| `GND`              | `GND`              | Crossbow GND |
+| 5 V in             | 5 V in             | USB or a dedicated UBEC (see Power below) |
 
-UART RX is intentionally disabled (`-1`) so that **GPIO16** stays free as the
-OLED reset line.
+UART RX is intentionally disabled (`-1`) so that the OLED reset line stays
+free (GPIO16 on v1/v2, GPIO21 on v3). The Crossbow TX pin moves on v3
+because GPIO17 is now the OLED SDA - the sketch handles that automatically
+based on the board you select in the IDE.
 
 ### Power
 
@@ -204,7 +250,10 @@ After changing the mode, reboot the Nomad so the new radio mode takes effect.
    - Adafruit SSD1306
    - Adafruit GFX Library
 3. Board:
-   - Heltec sketches: **ESP32 Arduino -> Heltec WiFi Kit 32**
+   - Heltec sketches on **v1/v2**: **ESP32 Arduino -> Heltec WiFi Kit 32**
+   - Heltec sketches on **v3/v4**: **ESP32 Arduino -> Heltec WiFi Kit 32(V3)**
+     (the sketch detects ESP32-S3 at compile time and uses the v3 pin map
+     plus the Vext gate that powers the OLED)
    - `*_esp32_v2` sketches: **ESP32 Arduino -> ESP32 Dev Module** (or
      whichever generic ESP32 board you're using)
 4. Open the `.ino` for the sketch you want - normally
@@ -218,9 +267,10 @@ Set at the top of each `.ino`:
 | Define | Default | Purpose |
 | ------ | ------- | ------- |
 | `CROSSBOW_BAUD` | `115200` | UART baud to the Crossbow |
-| `TX_PIN` | `17` | UART TX pin |
+| `TX_PIN` | `17` (v1/v2) / `33` (v3/v4) | UART TX pin; auto-selected from board target on Heltec sketches |
 | `OLED_UPDATE_MS` | `200` | OLED refresh interval |
-| `OLED_SDA` / `OLED_SCL` / `OLED_RST` | `4` / `15` / `16` | OLED I2C pins (Heltec defaults; absent in `*_esp32_v2`) |
+| `OLED_SDA` / `OLED_SCL` / `OLED_RST` | `4` / `15` / `16` (v1/v2), `17` / `18` / `21` (v3/v4) | OLED I2C pins (Heltec defaults; absent in `*_esp32_v2`) |
+| `VEXT_PIN` | `36` (v3/v4 only) | Drives the Vext rail LOW to power the OLED on Heltec V3/V4; not defined on v1/v2 |
 | `OLED_ADDR` | `0x3C` | SSD1306 I2C address (absent in `*_esp32_v2`) |
 | `STATUS_UPDATE_MS` | `2000` | (`*_esp32_v2` sketches only) serial status print cadence |
 
